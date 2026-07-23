@@ -6,8 +6,8 @@ import time
 from pathlib import Path
 
 
-PORT = 8000
-HOST = "127.0.0.1"
+PORT = int(os.getenv("PORT", "8000"))
+HOST = os.getenv("HOST", "0.0.0.0")
 
 
 def find_process_using_port(port: int):

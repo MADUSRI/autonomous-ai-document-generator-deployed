@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -28,6 +29,11 @@ class AgentResponse(BaseModel):
     document_path: str
     summary: str
     planning_mode: str
+
+
+@app.get("/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
 
 
 @app.get("/", response_class=HTMLResponse)

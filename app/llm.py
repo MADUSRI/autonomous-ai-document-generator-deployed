@@ -5,6 +5,17 @@ from typing import Any, Dict, List
 
 import httpx
 
+from .config import get_settings
+
+settings = get_settings()
+LLM_PROVIDER = settings.LLM_PROVIDER.strip().lower()
+OLLAMA_URL = settings.OLLAMA_URL.rstrip("/")
+OLLAMA_MODEL = settings.OLLAMA_MODEL.strip()
+GROQ_API_URL = settings.GROQ_API_URL.rstrip("/")
+GROQ_API_KEY = settings.GROQ_API_KEY.strip()
+GROQ_MODEL = settings.GROQ_MODEL.strip()
+GROQ_MAX_OUTPUT_TOKENS = settings.GROQ_MAX_OUTPUT_TOKENS
+
 
 def build_prompt_template(doc_type: str, request: str, subject: str) -> str:
     return (
@@ -48,6 +59,77 @@ def _extract_json_payload(content: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             pass
     return {}
+
+
+def _parse_ollama_response(response_json: Any) -> str:
+    if isinstance(response_json, dict):
+        response_text = response_json.get("response")
+        if isinstance(response_text, str):
+            return response_text.strip()
+    return ""
+
+
+def _parse_groq_response(response_json: Any) -> str:
+    if isinstance(response_json, dict):
+        if "output" in response_json:
+            output = response_json["output"]
+            if isinstance(output, list) and output:
+                first = output[0]
+                if isinstance(first, dict):
+                    for key in ("content", "text", "message", "output"):
+                        value = first.get(key)
+                        if isinstance(value, str) and value.strip():
+                            return value.strip()
+                if isinstance(first, str) and first.strip():
+                    return first.strip()
+        for key in ("response", "text", "output", "content"):
+            value = response_json.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def _ollama_request(prompt: str, model: str, timeout: float) -> str:
+    response = httpx.post(
+        f"{OLLAMA_URL}/api/generate",
+        json={"model": model, "prompt": prompt, "stream": False},
+        timeout=timeout,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"Ollama request failed: {response.status_code} {response.text}")
+    return _parse_ollama_response(response.json())
+
+
+def _groq_request(prompt: str, model: str, timeout: float) -> str:
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY must be set when LLM_PROVIDER is groq.")
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    response = httpx.post(
+        f"{GROQ_API_URL}/models/{model}/infer",
+        headers=headers,
+        json={
+            "input": prompt,
+            "max_output_tokens": GROQ_MAX_OUTPUT_TOKENS,
+            "temperature": 0.2,
+        },
+        timeout=timeout,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"Groq request failed: {response.status_code} {response.text}")
+    return _parse_groq_response(response.json())
+
+
+def send_llm_request(prompt: str, model: str | None = None, timeout: float = 600.0) -> str:
+    selected_model = model or (OLLAMA_MODEL if LLM_PROVIDER == "ollama" else GROQ_MODEL)
+    if LLM_PROVIDER == "groq":
+        return _groq_request(prompt, selected_model, timeout)
+    if LLM_PROVIDER == "ollama":
+        return _ollama_request(prompt, selected_model, timeout)
+    raise RuntimeError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}")
 
 
 def _build_task_execution_prompt(
@@ -96,26 +178,15 @@ def execute_task(
     prompt = _build_task_execution_prompt(request, doc_type, current_task, previous_sections, assumptions or [])
     start = time.time()
     try:
-        response = httpx.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama3.2:latest",
-                "prompt": prompt,
-                "stream": False,
-            },
-            timeout=600.0,
-        )
-        if response.status_code == 200:
-            payload = response.json().get("response", "")
-            if isinstance(payload, str) and payload.strip():
-                return payload.strip()
+        payload = send_llm_request(prompt, timeout=600.0)
+        if payload:
+            return payload
         print("Time:", time.time() - start)
     except Exception as e:
         print("Time:", time.time() - start)
         import traceback
         traceback.print_exc()
         print(f"LLM Error: {e}")
-        pass
 
     title = str(current_task.get("title") or current_task.get("name") or "Task").strip()
     description = str(current_task.get("description") or current_task.get("details") or "").strip()
@@ -130,19 +201,10 @@ def try_local_llm(request: str, doc_type: str) -> Dict[str, Any]:
         from .planner import infer_subject
 
         subject = infer_subject(request)
-        
-        response = httpx.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama3.2:latest",
-                "prompt": build_prompt_template(doc_type, request, subject),
-                "stream": False,
-            },
-            timeout=600.0,
-        )
-        if response.status_code == 200:
+        response_text = send_llm_request(build_prompt_template(doc_type, request, subject), timeout=600.0)
+        if response_text:
             print("Time:", time.time() - start)
-            payload = _extract_json_payload(response.json().get("response", ""))
+            payload = _extract_json_payload(response_text)
             if isinstance(payload, dict):
                 assumptions = payload.get("assumptions")
                 tasks = payload.get("tasks")
