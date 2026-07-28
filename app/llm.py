@@ -4,6 +4,9 @@ import time
 from typing import Any, Dict, List
 
 import httpx
+import traceback
+import logging
+# traceback.print_exc()
 
 from .config import get_settings
 
@@ -147,6 +150,38 @@ def _groq_request(prompt: str, model: str, timeout: float) -> str:
         raise RuntimeError(f"Groq request failed: {response.status_code} {response.text}")
     return _parse_groq_response(response.json())
 
+def _openrouter_request(prompt: str, model: str, timeout: float) -> str:
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError(
+            "OPENROUTER_API_KEY must be set when LLM_PROVIDER is openrouter."
+        )
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/MADUSRI/autonomous-ai-document-generator-deployed",
+        "X-Title": "Autonomous AI Document Generator"
+    }
+
+    response = httpx.post(
+        f"{OPENROUTER_API_URL}/chat/completions",
+        headers=headers,
+        json={
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.2
+        },
+        timeout=timeout,
+    )
+
+    response.raise_for_status()
+
+    return _parse_openrouter_response(response.json())
 
 def _is_provider_available(provider: str) -> bool:
     if provider == "ollama":
@@ -186,11 +221,20 @@ def send_llm_request(prompt: str, model: str | None = None, timeout: float = 600
         except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RequestError) as exc:
             last_error = exc
             if provider == primary_provider and any(_is_provider_available(p) for p in provider_order[index + 1 :]):
-                print(f"LLM provider {provider} timed out or network error; falling back to the next configured provider.")
+                # print(f"LLM provider {provider} timed out or network error; falling back to the next configured provider.")
+                logging.warning(
+                    "LLM provider %s failed. Trying next provider.",
+                    provider,
+                )
                 continue
             raise RuntimeError(f"LLM request failed for provider {provider}: {exc}") from exc
         except Exception as exc:
-            raise RuntimeError(f"LLM request failed for provider {provider}: {exc}") from exc
+            # raise RuntimeError(f"LLM request failed for provider {provider}: {exc}") from exc
+            traceback.print_exc()
+            raise RuntimeError(
+                f"LLM request failed for provider '{provider}': {str(exc)}"
+            ) from exc
+
 
     if last_error:
         raise RuntimeError(f"No configured LLM provider succeeded. Last error: {last_error}") from last_error
@@ -247,8 +291,16 @@ def execute_task(
         if payload:
             return payload
         print("Time:", time.time() - start)
+        logging.info(
+            "LLM generation completed in %.2f sec",
+            time.time() - start,
+        )
     except Exception as e:
-        print("Time:", time.time() - start)
+        # print("Time:", time.time() - start)
+        logging.info(
+            "LLM generation completed in %.2f sec",
+            time.time() - start,
+        )
         import traceback
         traceback.print_exc()
         print(f"LLM Error: {e}")

@@ -55,5 +55,12 @@ def agent(payload: AgentRequest) -> Dict[str, Any]:
     if not request_text:
         raise HTTPException(status_code=400, detail="Request cannot be empty")
 
-    return run_agent(request_text)
+    # return run_agent(request_text)
+    try:
+        return run_agent(request_text)
+    except Exception as ex:
+        raise HTTPException(
+            status_code=500,
+            detail=str(ex)
+        )
 

@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     GROQ_MAX_OUTPUT_TOKENS: int = 1024
     OPENROUTER_API_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "openai/gpt-4o"
+    # OPENROUTER_MODEL: str = "openai/gpt-4o"
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
 
     class Config:
         env_file = ".env"

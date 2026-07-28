@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Sequence
 
 from .llm import execute_task
+import logging
 
 
 def _normalize_tasks(plan: Sequence[Any] | None) -> List[Dict[str, Any]]:
@@ -31,6 +32,10 @@ def execute_document_generation(request: str, doc_type: str, plan: Sequence[Any]
     for task in _normalize_tasks(plan):
         generated_content = execute_task(request, doc_type, task, previous_sections, assumptions)
         print(f"Generated content for task '{task['title']}': {generated_content}")
+        logging.info(
+            "Generated section '%s'",
+            task["title"]
+        )
         section = {
             "title": task["title"],
             "content": generated_content,

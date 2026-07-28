@@ -4,6 +4,7 @@ import time
 from typing import Any, Dict, List
 
 import httpx
+from .llm import send_llm_request
 
 
 def _extract_json_payload(content: str) -> Dict[str, Any]:
@@ -56,39 +57,45 @@ def reflect_on_output(execution_context: Any, assumptions: List[str] | None = No
     )
     start = time.time()
     try:
-        response = httpx.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama3.2:latest",
-                "prompt": prompt,
-                "stream": False,
-            },
-            timeout=600.0,
+        # response = httpx.post(
+        #     "http://localhost:11434/api/generate",
+        #     json={
+        #         "model": "llama3.2:latest",
+        #         "prompt": prompt,
+        #         "stream": False,
+        #     },
+        #     timeout=600.0,
+        # )
+        response_text = send_llm_request(
+            prompt,
+            timeout=600.0
         )
-        if response.status_code == 200:
-            payload = _extract_json_payload(response.json().get("response", ""))
-            if isinstance(payload, dict):
-                improved_sections = payload.get("sections")
-                if isinstance(improved_sections, list):
-                    normalized_sections = []
-                    for section in improved_sections:
-                        if isinstance(section, dict):
-                            title = str(section.get("title") or "Section").strip()
-                            content = str(section.get("content") or "").strip()
-                            if title:
-                                normalized_sections.append({"title": title, "content": content})
-                    if normalized_sections:
-                        return {
-                            "plan": [section["title"] for section in normalized_sections],
-                            "assumptions": [str(item).strip() for item in payload.get("assumptions", assumptions) if str(item).strip()],
-                            "summary": summary or f"Refined the execution context for a {doc_type.lower()}.",
-                            "execution_context": {
-                                "request": str(payload.get("request") or request),
-                                "document_type": str(payload.get("document_type") or doc_type),
-                                "assumptions": [str(item).strip() for item in payload.get("assumptions", assumptions) if str(item).strip()],
-                                "sections": normalized_sections,
-                            },
-                        }
+
+        payload = _extract_json_payload(response_text)
+        # if response.status_code == 200:
+        #     payload = _extract_json_payload(response.json().get("response", ""))
+        #     if isinstance(payload, dict):
+        #         improved_sections = payload.get("sections")
+        #         if isinstance(improved_sections, list):
+        #             normalized_sections = []
+        #             for section in improved_sections:
+        #                 if isinstance(section, dict):
+        #                     title = str(section.get("title") or "Section").strip()
+        #                     content = str(section.get("content") or "").strip()
+        #                     if title:
+        #                         normalized_sections.append({"title": title, "content": content})
+        #             if normalized_sections:
+        #                 return {
+        #                     "plan": [section["title"] for section in normalized_sections],
+        #                     "assumptions": [str(item).strip() for item in payload.get("assumptions", assumptions) if str(item).strip()],
+        #                     "summary": summary or f"Refined the execution context for a {doc_type.lower()}.",
+        #                     "execution_context": {
+        #                         "request": str(payload.get("request") or request),
+        #                         "document_type": str(payload.get("document_type") or doc_type),
+        #                         "assumptions": [str(item).strip() for item in payload.get("assumptions", assumptions) if str(item).strip()],
+        #                         "sections": normalized_sections,
+        #                     },
+        #                 }
         print("Time:", time.time() - start)
     except Exception as e:
         print("Time:", time.time() - start)
