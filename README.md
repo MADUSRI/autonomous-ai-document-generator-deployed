@@ -22,11 +22,11 @@ This project implements a simple FastAPI service that accepts a natural language
   - `LLM_PROVIDER=ollama`
   - `OLLAMA_URL=http://localhost:11434`
   - `OLLAMA_MODEL=llama3.2:latest`
-- Cloud deployment (Groq API + Llama model):
-  - `LLM_PROVIDER=groq`
-  - `GROQ_API_KEY=<your_groq_api_key>`
-  - `GROQ_MODEL=llama`
-  - `GROQ_API_URL=https://api.groq.com/v1`
+- Cloud deployment (OpenRouter API):
+  - `LLM_PROVIDER=openrouter`
+  - `OPENROUTER_API_KEY=<your_openrouter_api_key>`
+  - `OPENROUTER_MODEL=openai/gpt-4o`
+  - `OPENROUTER_API_URL=https://openrouter.ai/api/v1`
 
 Example local startup:
 - `LLM_PROVIDER=ollama OLLAMA_URL=http://localhost:11434 python start_server.py`

@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama"
     GROQ_MAX_OUTPUT_TOKENS: int = 1024
+    OPENROUTER_API_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "openai/gpt-4o"
 
     class Config:
         env_file = ".env"
@@ -21,3 +24,5 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
+
+

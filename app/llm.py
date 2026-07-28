@@ -15,6 +15,9 @@ GROQ_API_URL = settings.GROQ_API_URL.rstrip("/")
 GROQ_API_KEY = settings.GROQ_API_KEY.strip()
 GROQ_MODEL = settings.GROQ_MODEL.strip()
 GROQ_MAX_OUTPUT_TOKENS = settings.GROQ_MAX_OUTPUT_TOKENS
+OPENROUTER_API_URL = settings.OPENROUTER_API_URL.rstrip("/")
+OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY.strip()
+OPENROUTER_MODEL = settings.OPENROUTER_MODEL.strip()
 
 
 def build_prompt_template(doc_type: str, request: str, subject: str) -> str:
@@ -89,6 +92,28 @@ def _parse_groq_response(response_json: Any) -> str:
     return ""
 
 
+def _parse_openrouter_response(response_json: Any) -> str:
+    if isinstance(response_json, dict):
+        choices = response_json.get("choices")
+        if isinstance(choices, list) and choices:
+            first_choice = choices[0]
+            if isinstance(first_choice, dict):
+                message = first_choice.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
+                for key in ("content", "text", "message"):
+                    value = first_choice.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+        for key in ("response", "text", "content"):
+            value = response_json.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
 def _ollama_request(prompt: str, model: str, timeout: float) -> str:
     response = httpx.post(
         f"{OLLAMA_URL}/api/generate",
@@ -123,13 +148,53 @@ def _groq_request(prompt: str, model: str, timeout: float) -> str:
     return _parse_groq_response(response.json())
 
 
-def send_llm_request(prompt: str, model: str | None = None, timeout: float = 600.0) -> str:
-    selected_model = model or (OLLAMA_MODEL if LLM_PROVIDER == "ollama" else GROQ_MODEL)
-    if LLM_PROVIDER == "groq":
-        return _groq_request(prompt, selected_model, timeout)
-    if LLM_PROVIDER == "ollama":
+def _is_provider_available(provider: str) -> bool:
+    if provider == "ollama":
+        return bool(OLLAMA_URL)
+    if provider == "groq":
+        return bool(GROQ_API_KEY and GROQ_API_URL)
+    if provider == "openrouter":
+        return bool(OPENROUTER_API_KEY and OPENROUTER_API_URL)
+    return False
+
+
+def _call_llm_provider(provider: str, prompt: str, model: str | None, timeout: float) -> str:
+    if provider == "ollama":
+        selected_model = model or OLLAMA_MODEL
         return _ollama_request(prompt, selected_model, timeout)
-    raise RuntimeError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}")
+    if provider == "groq":
+        selected_model = model or GROQ_MODEL
+        return _groq_request(prompt, selected_model, timeout)
+    if provider == "openrouter":
+        selected_model = model or OPENROUTER_MODEL
+        return _openrouter_request(prompt, selected_model, timeout)
+    raise RuntimeError(f"Unsupported LLM_PROVIDER: {provider}")
+
+
+def send_llm_request(prompt: str, model: str | None = None, timeout: float = 600.0) -> str:
+    primary_provider = LLM_PROVIDER
+    provider_order = [primary_provider] + [provider for provider in ("openrouter", "groq", "ollama") if provider != primary_provider]
+
+    last_error: Exception | None = None
+    for index, provider in enumerate(provider_order):
+        if not _is_provider_available(provider):
+            continue
+
+        try:
+            provider_model = model if provider == primary_provider else None
+            return _call_llm_provider(provider, prompt, provider_model, timeout)
+        except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RequestError) as exc:
+            last_error = exc
+            if provider == primary_provider and any(_is_provider_available(p) for p in provider_order[index + 1 :]):
+                print(f"LLM provider {provider} timed out or network error; falling back to the next configured provider.")
+                continue
+            raise RuntimeError(f"LLM request failed for provider {provider}: {exc}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"LLM request failed for provider {provider}: {exc}") from exc
+
+    if last_error:
+        raise RuntimeError(f"No configured LLM provider succeeded. Last error: {last_error}") from last_error
+    raise RuntimeError(f"No configured LLM provider available for {LLM_PROVIDER}.")
 
 
 def _build_task_execution_prompt(
