@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 from .agent import run_agent
 from .config import get_settings
 
-app = FastAPI(title="Autonomous Agent API")
+# app = FastAPI(title="Autonomous Agent API")
+app = FastAPI(
+    title="DocPilot AI",
+    description="Agentic AI platform that intelligently plans, generates, reviews, and exports professional business and technical documents.",
+    version="1.0.0"
+)
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "generated_docs"
 OUTPUT_DIR.mkdir(exist_ok=True)
