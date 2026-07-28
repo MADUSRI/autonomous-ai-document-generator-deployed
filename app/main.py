@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from .agent import run_agent
+from .config import get_settings
 
 app = FastAPI(title="Autonomous Agent API")
 
@@ -31,9 +32,18 @@ class AgentResponse(BaseModel):
     planning_mode: str
 
 
+# @app.get("/health")
+# def health() -> Dict[str, str]:
+#     return {"status": "ok"}
+
 @app.get("/health")
-def health() -> Dict[str, str]:
-    return {"status": "ok"}
+def health():
+    settings = get_settings()
+    return {
+        "status": "ok",
+        "provider": settings.LLM_PROVIDER,
+        "model": settings.OPENROUTER_MODEL,
+    }
 
 
 @app.get("/", response_class=HTMLResponse)

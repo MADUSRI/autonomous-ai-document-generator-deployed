@@ -37,7 +37,7 @@ def run_agent(request_text: str) -> Dict[str, Any]:
         "plan": reflected.get("plan", plan),
         "assumptions": reflected.get("assumptions", assumptions),
         "document_name": document_path.name,
-        "document_path": str(document_path),
+        "document_path": f"/download/{document_path.name}",
         "summary": reflected.get("summary", summary),
         "planning_mode": planning_mode,
         "tasks": tasks,
